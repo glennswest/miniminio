@@ -203,8 +203,22 @@ fn canonical_query_string(uri: &Uri) -> String {
             continue;
         }
         let (k, v) = match pair.split_once('=') {
-            Some((k, v)) => (k.to_string(), v.to_string()),
-            None => (pair.to_string(), String::new()),
+            Some((k, v)) => {
+                // Decode first, then re-encode to normalize
+                let dk = percent_encoding::percent_decode_str(k)
+                    .decode_utf8_lossy()
+                    .to_string();
+                let dv = percent_encoding::percent_decode_str(v)
+                    .decode_utf8_lossy()
+                    .to_string();
+                (dk, dv)
+            }
+            None => {
+                let dk = percent_encoding::percent_decode_str(pair)
+                    .decode_utf8_lossy()
+                    .to_string();
+                (dk, String::new())
+            }
         };
         params.insert(k, v);
     }
