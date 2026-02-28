@@ -244,7 +244,7 @@ fn canonical_headers_string(headers: &HeaderMap, signed_headers: &[String]) -> S
     result
 }
 
-fn derive_signing_key(secret_key: &str, date: &str, region: &str) -> Vec<u8> {
+pub(crate) fn derive_signing_key(secret_key: &str, date: &str, region: &str) -> Vec<u8> {
     let key = format!("AWS4{secret_key}");
     let date_key = hmac_bytes(key.as_bytes(), date.as_bytes());
     let region_key = hmac_bytes(&date_key, region.as_bytes());
@@ -252,17 +252,17 @@ fn derive_signing_key(secret_key: &str, date: &str, region: &str) -> Vec<u8> {
     hmac_bytes(&service_key, b"aws4_request")
 }
 
-fn hmac_bytes(key: &[u8], data: &[u8]) -> Vec<u8> {
+pub(crate) fn hmac_bytes(key: &[u8], data: &[u8]) -> Vec<u8> {
     let mut mac = HmacSha256::new_from_slice(key).expect("HMAC key");
     mac.update(data);
     mac.finalize().into_bytes().to_vec()
 }
 
-fn hmac_hex(key: &[u8], data: &[u8]) -> String {
+pub(crate) fn hmac_hex(key: &[u8], data: &[u8]) -> String {
     hex::encode(hmac_bytes(key, data))
 }
 
-fn percent_encode_path(path: &str) -> String {
+pub(crate) fn percent_encode_path(path: &str) -> String {
     if path.is_empty() || path == "/" {
         return "/".to_string();
     }

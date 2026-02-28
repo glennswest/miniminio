@@ -2,18 +2,23 @@ pub mod cleanup;
 pub mod metadata;
 
 use crate::s3::error::S3Error;
+use crate::sync::SyncEvent;
 use metadata::*;
 
 use chrono::Utc;
 use md5::{Digest, Md5};
 use std::collections::HashMap;
 use std::path::{Component, Path, PathBuf};
+use std::sync::atomic::Ordering;
 use tokio::fs;
 use tokio::io::AsyncWriteExt;
+use tokio::sync::mpsc;
 
 #[derive(Clone)]
 pub struct Storage {
     data_dir: PathBuf,
+    sync_tx: Option<mpsc::UnboundedSender<SyncEvent>>,
+    sync_pending: Option<std::sync::Arc<std::sync::atomic::AtomicU64>>,
 }
 
 impl Storage {
@@ -21,11 +26,34 @@ impl Storage {
         fs::create_dir_all(&data_dir)
             .await
             .map_err(|e| S3Error::InternalError(format!("Failed to create data dir: {e}")))?;
-        // Create multipart staging area
         fs::create_dir_all(data_dir.join(".multipart"))
             .await
             .map_err(|e| S3Error::InternalError(format!("Failed to create multipart dir: {e}")))?;
-        Ok(Self { data_dir })
+        Ok(Self {
+            data_dir,
+            sync_tx: None,
+            sync_pending: None,
+        })
+    }
+
+    /// Attach a sync channel. Events will be emitted for all write operations.
+    pub fn with_sync(
+        mut self,
+        tx: mpsc::UnboundedSender<SyncEvent>,
+        pending_counter: std::sync::Arc<std::sync::atomic::AtomicU64>,
+    ) -> Self {
+        self.sync_tx = Some(tx);
+        self.sync_pending = Some(pending_counter);
+        self
+    }
+
+    fn emit_sync(&self, event: SyncEvent) {
+        if let Some(tx) = &self.sync_tx {
+            if let Some(counter) = &self.sync_pending {
+                counter.fetch_add(1, Ordering::Relaxed);
+            }
+            let _ = tx.send(event);
+        }
     }
 
     pub fn data_dir(&self) -> &Path {
@@ -124,6 +152,9 @@ impl Storage {
         fs::write(info_path, data)
             .await
             .map_err(|e| S3Error::InternalError(e.to_string()))?;
+        self.emit_sync(SyncEvent::CreateBucket {
+            bucket: name.into(),
+        });
         Ok(())
     }
 
@@ -149,6 +180,9 @@ impl Storage {
         fs::remove_dir_all(&path)
             .await
             .map_err(|e| S3Error::InternalError(e.to_string()))?;
+        self.emit_sync(SyncEvent::DeleteBucket {
+            bucket: name.into(),
+        });
         Ok(())
     }
 
@@ -251,6 +285,11 @@ impl Storage {
             .await
             .map_err(|e| S3Error::InternalError(e.to_string()))?;
 
+        self.emit_sync(SyncEvent::PutObject {
+            bucket: bucket.into(),
+            key: key.into(),
+        });
+
         Ok(meta)
     }
 
@@ -319,6 +358,11 @@ impl Storage {
             }
             current = dir.parent().map(|p| p.to_path_buf());
         }
+
+        self.emit_sync(SyncEvent::DeleteObject {
+            bucket: bucket.into(),
+            key: key.into(),
+        });
 
         Ok(())
     }
@@ -628,6 +672,11 @@ impl Storage {
 
         // Clean up multipart staging
         fs::remove_dir_all(&mp_dir).await.ok();
+
+        self.emit_sync(SyncEvent::PutObject {
+            bucket: info.bucket.clone(),
+            key: info.key.clone(),
+        });
 
         Ok(meta)
     }

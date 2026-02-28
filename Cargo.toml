@@ -1,6 +1,6 @@
 [package]
 name = "miniminio"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
 rust-version = "1.75"
 description = "Minimal S3-compatible object storage server"
@@ -24,6 +24,7 @@ md-5 = "0.10"
 mime_guess = "2"
 percent-encoding = "2"
 quick-xml = { version = "0.36", features = ["serde", "serialize"] }
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 sha2 = "0.10"

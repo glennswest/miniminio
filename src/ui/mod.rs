@@ -474,6 +474,7 @@ async fn admin_page(State(state): State<AppState>) -> Html<String> {
     let snap = state.metrics.snapshot();
     let total = state.storage.total_stats().await.unwrap_or_default();
     let buckets = state.storage.list_buckets().await.unwrap_or_default();
+    let sync = state.sync_status.snapshot();
 
     let mut bucket_rows = String::new();
     for b in &buckets {
@@ -491,6 +492,40 @@ async fn admin_page(State(state): State<AppState>) -> Html<String> {
         ));
     }
 
+    let sync_section = if sync.enabled {
+        let last_sync = if sync.last_sync_epoch > 0 {
+            chrono::DateTime::from_timestamp(sync.last_sync_epoch as i64, 0)
+                .map(|dt| dt.format("%Y-%m-%d %H:%M:%S UTC").to_string())
+                .unwrap_or_else(|| "—".into())
+        } else {
+            "Never".into()
+        };
+        format!(
+            r#"<div class="card">
+<h3>Upstream Sync</h3>
+<table>
+<tr><th>Setting</th><th>Value</th></tr>
+<tr><td>Status</td><td><span style="color:green;font-weight:bold">Enabled</span></td></tr>
+<tr><td>Endpoint</td><td><code>{endpoint}</code></td></tr>
+<tr><td>Events Synced</td><td>{sent}</td></tr>
+<tr><td>Events Pending</td><td>{pending}</td></tr>
+<tr><td>Events Failed</td><td>{failed}</td></tr>
+<tr><td>Last Sync</td><td>{last_sync}</td></tr>
+</table>
+</div>"#,
+            endpoint = sync.endpoint,
+            sent = sync.events_sent,
+            pending = sync.events_pending,
+            failed = sync.events_failed,
+        )
+    } else {
+        r#"<div class="card">
+<h3>Upstream Sync</h3>
+<p style="color:#888">Disabled — set <code>--sync-endpoint</code> to enable replication to an upstream MiniMinio.</p>
+</div>"#
+            .to_string()
+    };
+
     page(
         "Admin",
         &format!(
@@ -501,6 +536,8 @@ async fn admin_page(State(state): State<AppState>) -> Html<String> {
 <div class="stat"><div class="label">Total Storage</div><div class="value">{storage}</div></div>
 <div class="stat"><div class="label">Total Objects</div><div class="value">{objects}</div></div>
 </div>
+
+{sync_section}
 
 <div class="card">
 <h3>Request Statistics</h3>

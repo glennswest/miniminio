@@ -17,6 +17,7 @@ pub fn router() -> Router<AppState> {
         .route("/ui/api/buckets", get(list_buckets_json))
         .route("/ui/api/buckets/:bucket/stats", get(bucket_stats_json))
         .route("/ui/api/server-info", get(server_info))
+        .route("/ui/api/sync-status", get(sync_status))
         .route("/ui/api/cleanup", post(run_cleanup))
 }
 
@@ -77,6 +78,7 @@ async fn server_info(State(state): State<AppState>) -> impl IntoResponse {
     let total = state.storage.total_stats().await.unwrap_or_default();
     let buckets = state.storage.list_buckets().await.unwrap_or_default();
     let snap = state.metrics.snapshot();
+    let sync = state.sync_status.snapshot();
 
     Json(json!({
         "version": env!("CARGO_PKG_VERSION"),
@@ -88,7 +90,12 @@ async fn server_info(State(state): State<AppState>) -> impl IntoResponse {
         "requests_total": snap.requests_total,
         "bytes_in": snap.bytes_in,
         "bytes_out": snap.bytes_out,
+        "sync": sync,
     }))
+}
+
+async fn sync_status(State(state): State<AppState>) -> impl IntoResponse {
+    Json(state.sync_status.snapshot())
 }
 
 async fn run_cleanup(State(state): State<AppState>) -> impl IntoResponse {
