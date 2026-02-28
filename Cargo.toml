@@ -23,7 +23,7 @@ http-body-util = "0.1"
 md-5 = "0.10"
 mime_guess = "2"
 percent-encoding = "2"
-quick-xml = { version = "0.36", features = ["serde"] }
+quick-xml = { version = "0.36", features = ["serde", "serialize"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 sha2 = "0.10"

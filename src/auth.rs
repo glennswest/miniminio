@@ -13,6 +13,7 @@ type HmacSha256 = Hmac<Sha256>;
 struct AuthInfo {
     access_key: String,
     date: String,
+    #[allow(dead_code)]
     region: String,
     signed_headers: Vec<String>,
     signature: String,

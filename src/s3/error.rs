@@ -79,7 +79,7 @@ impl S3Error {
             Self::BucketNotEmpty(_) => StatusCode::CONFLICT,
             Self::InvalidBucketName(_) | Self::InvalidArgument(_) => StatusCode::BAD_REQUEST,
             Self::InvalidPart | Self::InvalidPartOrder => StatusCode::BAD_REQUEST,
-            Self::EntityTooLarge => StatusCode::REQUEST_ENTITY_TOO_LARGE,
+            Self::EntityTooLarge => StatusCode::PAYLOAD_TOO_LARGE,
             Self::AccessDenied | Self::SignatureDoesNotMatch | Self::MissingSecurityHeader => {
                 StatusCode::FORBIDDEN
             }

@@ -313,17 +313,9 @@ impl Storage {
             if dir == bucket_dir {
                 break;
             }
-            if fs::read_dir(&dir)
-                .await
-                .map(|mut d| {
-                    let d = &mut d;
-                    Box::pin(async move { d.next_entry().await.ok().flatten().is_none() })
-                })
-                .ok()
-                .is_some()
-            {
-                // Try to remove empty dir, ignore errors
-                fs::remove_dir(&dir).await.ok();
+            // Try to remove empty dir (fails if not empty, which is fine)
+            if fs::remove_dir(&dir).await.is_err() {
+                break;
             }
             current = dir.parent().map(|p| p.to_path_buf());
         }

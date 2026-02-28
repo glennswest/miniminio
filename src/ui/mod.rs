@@ -1,4 +1,3 @@
-use axum::body::Bytes;
 use axum::extract::{Multipart, Path, Query, State};
 use axum::http::StatusCode;
 use axum::response::{Html, IntoResponse, Redirect, Response};
@@ -345,7 +344,7 @@ async fn objects_page(
 }
 
 async fn upload_page(
-    State(state): State<AppState>,
+    State(_state): State<AppState>,
     Path(bucket): Path<String>,
     Query(params): Query<HashMap<String, String>>,
 ) -> Html<String> {

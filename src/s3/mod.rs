@@ -2,7 +2,7 @@ pub mod bucket;
 pub mod error;
 pub mod object;
 
-use axum::routing::{any, delete, get, head, post, put};
+use axum::routing::get;
 use axum::Router;
 
 use crate::AppState;

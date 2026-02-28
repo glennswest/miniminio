@@ -2,7 +2,7 @@ pub mod metrics;
 
 use axum::extract::State;
 use axum::http::StatusCode;
-use axum::response::{IntoResponse, Json, Response};
+use axum::response::{IntoResponse, Json};
 use axum::routing::{get, post};
 use axum::Router;
 use serde_json::json;
