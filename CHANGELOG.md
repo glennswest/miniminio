@@ -1,5 +1,20 @@
 # Changelog
 
+## [v0.2.0] — 2026-02-28
+
+### Added
+- Upstream sync replication for hierarchical deployment
+  - One-way push replication from local instances to upstream MiniMinio
+  - Event-driven sync: bucket create/delete, object put/delete
+  - Exponential backoff retry (5 retries, 1s base delay)
+  - S3 SigV4-signed client for remote operations
+  - Bucket prefix mapping (e.g. `edge01-mybucket` on upstream)
+  - Sync status tracking: events sent/failed/pending, last sync timestamp
+  - `/ui/api/sync-status` admin endpoint
+  - Sync status panel in admin web UI
+  - CLI flags: `--sync-endpoint`, `--sync-access-key`, `--sync-secret-key`, `--sync-region`, `--sync-bucket-prefix`
+  - Hierarchy support via chaining (edge -> regional -> global)
+
 ## [v0.1.0] — 2026-02-28
 
 ### Added

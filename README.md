@@ -10,6 +10,7 @@ Minimal S3-compatible object storage server. Single binary, single disk, scratch
 - **Storage** -- Filesystem-backed, single disk, no dependencies
 - **Metrics** -- Request counting, bandwidth tracking, per-bucket statistics
 - **Cleanup** -- Automatic multipart upload expiry, orphan metadata removal
+- **Upstream Sync** -- One-way push replication to a master MiniMinio, supports hierarchy
 - **Container** -- Static musl binary, runs from `scratch` image
 
 ## Architecture
@@ -119,6 +120,106 @@ All options can be set via CLI flags or environment variables:
 | `--secret-key` | `MINIMINIO_SECRET_KEY` | `minioadmin` | S3 secret key |
 | `--region` | `MINIMINIO_REGION` | `us-east-1` | S3 region name |
 | `--multipart-expiry-hours` | `MINIMINIO_MULTIPART_EXPIRY` | `24` | Auto-cleanup age for incomplete multipart uploads |
+
+## Upstream Sync
+
+MiniMinio supports one-way push replication to an upstream MiniMinio (or any S3-compatible endpoint). This enables hierarchical deployments where hundreds or thousands of edge instances sync to regional or global masters.
+
+### Sync Configuration
+
+| Flag | Env Variable | Default | Description |
+|------|-------------|---------|-------------|
+| `--sync-endpoint` | `MINIMINIO_SYNC_ENDPOINT` | *(none)* | Upstream S3 endpoint URL (enables sync) |
+| `--sync-access-key` | `MINIMINIO_SYNC_ACCESS_KEY` | *(main key)* | Upstream access key (falls back to main credentials) |
+| `--sync-secret-key` | `MINIMINIO_SYNC_SECRET_KEY` | *(main key)* | Upstream secret key (falls back to main credentials) |
+| `--sync-region` | `MINIMINIO_SYNC_REGION` | `us-east-1` | Upstream region |
+| `--sync-bucket-prefix` | `MINIMINIO_SYNC_BUCKET_PREFIX` | *(empty)* | Prefix added to bucket names on upstream |
+
+### How It Works
+
+1. Storage operations (create bucket, put object, delete object, etc.) emit events to an in-process channel
+2. A background `SyncManager` processes events and pushes changes to the upstream endpoint
+3. Failed syncs retry with exponential backoff (up to 5 retries, 1s/2s/4s/8s/16s delays)
+4. Events that fail after all retries are dropped and counted in metrics
+
+### Hierarchy Example
+
+Deploy edge instances near apps, syncing to a regional master, which syncs to a global master:
+
+```
+  Edge Instances                Regional               Global
+  +-----------+
+  | edge-01   |---+
+  +-----------+   |       +--------------+
+  +-----------+   +------>|  regional-us |---+
+  | edge-02   |---------->|  :9000       |   |     +---------------+
+  +-----------+           +--------------+   +---->|  global       |
+  +-----------+                              |     |  :9000        |
+  | edge-03   |---+       +--------------+   |     +---------------+
+  +-----------+   +------>|  regional-eu |---+
+  +-----------+   |       |  :9000       |
+  | edge-04   |---+       +--------------+
+  +-----------+
+```
+
+```bash
+# Global master (no sync, receives everything)
+miniminio --port 9000 --data-dir /data/global
+
+# Regional US (syncs to global, bucket prefix isolates traffic)
+miniminio --port 9000 --data-dir /data/regional-us \
+  --sync-endpoint http://global:9000 \
+  --sync-bucket-prefix "us-"
+
+# Edge instance (syncs to regional)
+miniminio --port 9000 --data-dir /data/edge \
+  --sync-endpoint http://regional-us:9000 \
+  --sync-bucket-prefix "edge01-"
+```
+
+With bucket prefix, local bucket `mybucket` on edge-01 becomes `edge01-mybucket` on the regional, and `us-edge01-mybucket` on global. This prevents name collisions across instances.
+
+### Sync Status API
+
+```bash
+curl http://localhost:9000/ui/api/sync-status
+```
+
+```json
+{
+  "enabled": true,
+  "endpoint": "http://regional-us:9000",
+  "events_sent": 42,
+  "events_failed": 0,
+  "events_pending": 0,
+  "last_sync_epoch": 1709164800
+}
+```
+
+### Kubernetes Sidecar Pattern
+
+Deploy MiniMinio as a sidecar alongside your app, syncing to a central cluster:
+
+```yaml
+containers:
+- name: myapp
+  image: myapp:latest
+  env:
+  - name: S3_ENDPOINT
+    value: "http://localhost:9000"
+- name: miniminio
+  image: miniminio:latest
+  env:
+  - name: MINIMINIO_SYNC_ENDPOINT
+    value: "http://miniminio-master.storage:9000"
+  - name: MINIMINIO_SYNC_BUCKET_PREFIX
+    valueFrom:
+      fieldRef:
+        fieldPath: metadata.name
+  volumeMounts:
+  - name: data
+    mountPath: /data
+```
 
 ## S3 API Reference
 
@@ -262,6 +363,7 @@ These JSON endpoints are accessible without S3 auth (served under `/ui/api/`):
 | `/ui/api/server-info` | GET | Server version, uptime, storage totals |
 | `/ui/api/buckets` | GET | Bucket list with per-bucket stats |
 | `/ui/api/buckets/{name}/stats` | GET | Single bucket statistics |
+| `/ui/api/sync-status` | GET | Sync replication status and counters |
 | `/ui/api/cleanup` | POST | Trigger manual cleanup of expired multipart uploads and orphaned metadata |
 
 ### Metrics Response
@@ -284,7 +386,7 @@ These JSON endpoints are accessible without S3 auth (served under `/ui/api/`):
 
 ```json
 {
-  "version": "0.1.0",
+  "version": "0.2.0",
   "uptime_secs": 86400,
   "buckets": 5,
   "objects": 1234,
@@ -292,7 +394,15 @@ These JSON endpoints are accessible without S3 auth (served under `/ui/api/`):
   "total_size_human": "1.00 GB",
   "requests_total": 5000,
   "bytes_in": 104857600,
-  "bytes_out": 524288000
+  "bytes_out": 524288000,
+  "sync": {
+    "enabled": true,
+    "endpoint": "http://master:9000",
+    "events_sent": 42,
+    "events_failed": 0,
+    "events_pending": 0,
+    "last_sync_epoch": 1709164800
+  }
 }
 ```
 
@@ -399,7 +509,7 @@ MiniMinio is intentionally minimal. These S3 features are **not** supported:
 - Bucket policies and ACLs
 - Object versioning
 - Lifecycle rules
-- Cross-region replication
+- Bi-directional or pull-based replication (only push sync is supported)
 - Object lock / retention
 - Bucket notifications (SNS/SQS/Lambda)
 - Select object content (S3 Select)
