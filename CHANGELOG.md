@@ -1,5 +1,16 @@
 # Changelog
 
+## [Unreleased]
+
+### 2026-03-17
+- **feat:** Rose appliance deployment (scratch container with stormd supervisor)
+  - ARM64 cross-compilation via `.cargo/config.toml`
+  - `Dockerfile.scratch` with stormd as PID 1 and miniminio as supervised process
+  - `deploy/stormd-config.toml` for process management (restart policy, SSH, logging)
+  - `deploy/miniminio.yaml` pod manifest for mkube (PVC on SATA RAID1, static IP 192.168.200.11)
+  - `Makefile` with build, deploy, and deploy-pod targets
+  - Container image: 11.8 MB (3.2 MB miniminio + 8.6 MB stormd)
+
 ## [v0.2.0] — 2026-02-28
 
 ### Added
