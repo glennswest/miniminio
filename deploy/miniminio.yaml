@@ -1,12 +1,12 @@
 # MiniMinio S3-compatible object storage for rose1
 # Deployed via: mk apply -f deploy/miniminio.yaml
-# Data stored on SATA RAID1 at /raid1/volumes/gt-miniminio/data/
+# Data stored on SATA RAID1 at /raid1/volumes/gt-minio/data/
 
 ---
 apiVersion: v1
 kind: Pod
 metadata:
-  name: miniminio
+  name: minio
   namespace: gt
   annotations:
     vkube.io/network: gt
@@ -17,9 +17,9 @@ spec:
   volumes:
     - name: data
       persistentVolumeClaim:
-        claimName: gt-miniminio-data
+        claimName: gt-minio-data
   containers:
-    - name: miniminio
+    - name: minio
       image: 192.168.200.3:5000/miniminio:edge
       startupProbe:
         httpGet:
